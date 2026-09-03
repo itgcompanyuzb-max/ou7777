@@ -1,7 +1,7 @@
 import { CATEGORIES, dayLabel, money, timeOf, type Tx } from "@/lib/finance";
 import { Trash2 } from "lucide-react";
 
-export function TxRow({ tx, onDelete }: { tx: Tx; onDelete?: (id: string) => void }) {
+export function TxRow({ tx, onDelete }: { tx: Tx; onDelete?: ((id: string) => void) | undefined }) {
   const cat = CATEGORIES[tx.category];
   const income = tx.kind === "income";
   return (
@@ -35,7 +35,13 @@ export function TxRow({ tx, onDelete }: { tx: Tx; onDelete?: (id: string) => voi
   );
 }
 
-export function GroupedTxList({ txs, onDelete }: { txs: Tx[]; onDelete?: (id: string) => void }) {
+export function GroupedTxList({
+  txs,
+  onDelete,
+}: {
+  txs: Tx[];
+  onDelete?: ((id: string) => void) | undefined;
+}) {
   const groups = txs.reduce<Record<string, Tx[]>>((acc, t) => {
     const key = dayLabel(t.date);
     (acc[key] ||= []).push(t);
