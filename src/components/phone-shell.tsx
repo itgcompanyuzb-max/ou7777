@@ -1,12 +1,11 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { Home, ArrowLeftRight, BarChart3, Wallet, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
-const NAV: { to: string; icon: LucideIcon; label: string }[] = [
-  { to: "/", icon: Home, label: "Asosiy" },
-  { to: "/transactions", icon: ArrowLeftRight, label: "Amallar" },
-  { to: "/insights", icon: BarChart3, label: "Hisobot" },
-  { to: "/cards", icon: Wallet, label: "Kartalar" },
+const NAV: { to: string; label: string }[] = [
+  { to: "/", label: "Asosiy" },
+  { to: "/transactions", label: "Amallar" },
+  { to: "/insights", label: "Hisobot" },
+  { to: "/cards", label: "Kartalar" },
 ];
 
 export function PhoneShell({ children }: { children: ReactNode }) {
