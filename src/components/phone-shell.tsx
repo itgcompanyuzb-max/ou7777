@@ -18,8 +18,8 @@ export function PhoneShell({ children }: { children: ReactNode }) {
       </div>
 
       <nav className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2">
-        <div className="glass flex items-center gap-1 rounded-full p-2">
-          {NAV.map(({ to, icon: Icon, label }) => {
+        <div className="glass flex items-center gap-1 rounded-full p-1.5">
+          {NAV.map(({ to, label }) => {
             const active = pathname === to;
             return (
               <Link
@@ -27,14 +27,13 @@ export function PhoneShell({ children }: { children: ReactNode }) {
                 to={to}
                 aria-label={label}
                 className={[
-                  "flex h-12 w-16 flex-col items-center justify-center rounded-full transition-all",
+                  "rounded-full px-4 py-2.5 text-[13px] font-semibold tracking-tight transition-all",
                   active
-                    ? "bg-primary/20 text-primary"
+                    ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground active:scale-95",
                 ].join(" ")}
               >
-                <Icon className="h-5 w-5" strokeWidth={2.2} />
-                <span className="mt-0.5 text-[9px] font-semibold tracking-wide">{label}</span>
+                {label}
               </Link>
             );
           })}
