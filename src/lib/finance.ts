@@ -35,11 +35,31 @@ export const CATEGORIES: Record<CategoryId, { label: string; emoji: string; char
 
 const KEY = "hisobchi.tx.v1";
 
+// Uzbekistan is UTC+5 with no daylight saving. Every date shown in the app is
+// derived from this fixed offset with UTC getters, so the server and the phone
+// always build identical strings (no hydration mismatch) and the times read as
+// local Tashkent time.
+const TZ_MS = 5 * 60 * 60 * 1000;
+
+/** A Date whose *UTC* parts are the Uzbekistan wall-clock parts of `epoch`. */
+function wall(epoch: number) {
+  return new Date(epoch + TZ_MS);
+}
+
+const nowWall = () => wall(Date.now());
+
+const dayKeyOfWall = (w: Date) =>
+  `${w.getUTCFullYear()}-${w.getUTCMonth()}-${w.getUTCDate()}`;
+const monthKeyOfWall = (w: Date) => `${w.getUTCFullYear()}-${w.getUTCMonth()}`;
+const dayKeyOf = (epoch: number) => dayKeyOfWall(wall(epoch));
+const monthKeyOf = (epoch: number) => monthKeyOfWall(wall(epoch));
+
 function iso(daysAgo: number, hour = 12, minute = 0) {
-  const d = new Date();
-  d.setDate(d.getDate() - daysAgo);
-  d.setHours(hour, minute, 0, 0);
-  return d.toISOString();
+  const w = nowWall();
+  const epoch =
+    Date.UTC(w.getUTCFullYear(), w.getUTCMonth(), w.getUTCDate() - daysAgo, hour, minute) -
+    TZ_MS;
+  return new Date(epoch).toISOString();
 }
 
 export const SEED: Tx[] = [
@@ -117,35 +137,46 @@ export function money(n: number, opts?: { compact?: boolean }) {
     if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} mln`;
     if (Math.abs(n) >= 1_000) return `${Math.round(n / 1_000)} ming`;
   }
-  return new Intl.NumberFormat("uz-UZ", { maximumFractionDigits: 0 }).format(Math.round(n));
+  // Grouped by hand so the separator never depends on the runtime's locale data.
+  const v = Math.round(n);
+  const digits = Math.abs(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "\u00A0");
+  return v < 0 ? `-${digits}` : digits;
 }
 
 export function timeOf(isoStr: string) {
-  return new Date(isoStr).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" });
+  const w = wall(new Date(isoStr).getTime());
+  const pad = (x: number) => String(x).padStart(2, "0");
+  return `${pad(w.getUTCHours())}:${pad(w.getUTCMinutes())}`;
 }
 
 const MONTHS = ["Yan", "Fev", "Mar", "Apr", "May", "Iyn", "Iyl", "Avg", "Sen", "Okt", "Noy", "Dek"];
 
 export function dayLabel(isoStr: string) {
-  const d = new Date(isoStr);
-  const today = new Date();
-  const y = new Date();
-  y.setDate(today.getDate() - 1);
-  const same = (a: Date, b: Date) => a.toDateString() === b.toDateString();
-  if (same(d, today)) return "Bugun";
-  if (same(d, y)) return "Kecha";
-  return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  const w = wall(new Date(isoStr).getTime());
+  const t = nowWall();
+  const days = Math.round(
+    (Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()) -
+      Date.UTC(w.getUTCFullYear(), w.getUTCMonth(), w.getUTCDate())) /
+      86_400_000,
+  );
+  if (days === 0) return "Bugun";
+  if (days === 1) return "Kecha";
+  return `${w.getUTCDate()} ${MONTHS[w.getUTCMonth()]}`;
 }
 
 export function monthKey(d: Date) {
-  return `${d.getFullYear()}-${d.getMonth()}`;
+  return monthKeyOf(d.getTime());
 }
 
 export function stats(txs: Tx[]) {
-  const now = new Date();
-  const thisMonth = txs.filter((t) => monthKey(new Date(t.date)) === monthKey(now));
-  const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const prevMonth = txs.filter((t) => monthKey(new Date(t.date)) === monthKey(prevDate));
+  const now = nowWall();
+  const thisMonth = txs.filter((t) => monthKeyOf(new Date(t.date).getTime()) === monthKeyOfWall(now));
+  const prev = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1),
+  );
+  const prevMonth = txs.filter(
+    (t) => monthKeyOf(new Date(t.date).getTime()) === monthKeyOfWall(prev),
+  );
 
   const sum = (list: Tx[], kind: TxKind) =>
     list.filter((t) => t.kind === kind).reduce((a, t) => a + t.amount, 0);
@@ -154,12 +185,13 @@ export function stats(txs: Tx[]) {
   const expense = sum(thisMonth, "expense");
   const prevExpense = sum(prevMonth, "expense");
 
-  const isToday = (t: Tx) => new Date(t.date).toDateString() === now.toDateString();
-  const yDate = new Date();
-  yDate.setDate(now.getDate() - 1);
-  const todaySpend = txs.filter((t) => t.kind === "expense" && isToday(t)).reduce((a, t) => a + t.amount, 0);
+  const todayKey = dayKeyOfWall(now);
+  const yKey = dayKeyOfWall(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1)));
+  const todaySpend = txs
+    .filter((t) => t.kind === "expense" && dayKeyOf(new Date(t.date).getTime()) === todayKey)
+    .reduce((a, t) => a + t.amount, 0);
   const yesterdaySpend = txs
-    .filter((t) => t.kind === "expense" && new Date(t.date).toDateString() === yDate.toDateString())
+    .filter((t) => t.kind === "expense" && dayKeyOf(new Date(t.date).getTime()) === yKey)
     .reduce((a, t) => a + t.amount, 0);
 
   const byCategory = Object.entries(
@@ -180,21 +212,20 @@ export function stats(txs: Tx[]) {
     .sort((a, b) => b.value - a.value);
 
   const trend = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - (6 - i), 1);
-    const key = monthKey(d);
+    const w = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (6 - i), 1));
     const spend = txs
-      .filter((t) => t.kind === "expense" && monthKey(new Date(t.date)) === key)
+      .filter((t) => t.kind === "expense" && monthKeyOf(new Date(t.date).getTime()) === monthKeyOfWall(w))
       .reduce((a, t) => a + t.amount, 0);
-    return { month: MONTHS[d.getMonth()], spend };
+    return { month: MONTHS[w.getUTCMonth()], spend };
   });
 
   const daily = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date();
-    d.setDate(now.getDate() - (6 - i));
+    const w = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (6 - i)));
+    const key = dayKeyOfWall(w);
     const spend = txs
-      .filter((t) => t.kind === "expense" && new Date(t.date).toDateString() === d.toDateString())
+      .filter((t) => t.kind === "expense" && dayKeyOf(new Date(t.date).getTime()) === key)
       .reduce((a, t) => a + t.amount, 0);
-    return { day: ["Yak", "Du", "Se", "Cho", "Pay", "Ju", "Sha"][d.getDay()], spend };
+    return { day: ["Yak", "Du", "Se", "Cho", "Pay", "Ju", "Sha"][w.getUTCDay()], spend };
   });
 
   const balance = income - expense;
